@@ -1,80 +1,94 @@
+# app.py – Erweiterte Fußball Value Bet App mit Top-Ligen und CL/EL
+
 import streamlit as st
 import pandas as pd
 import numpy as np
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import train_test_split
 
-st.set_page_config(page_title="⚽ Fußball Value Bet KI", layout="wide")
-st.title("⚽ Fußball-Wettprognose & Value Bets mit KI")
+# -------------------------------
+# LIGEN-LISTE
+# -------------------------------
+ligen = [
+    "Bundesliga",
+    "Premier League",
+    "La Liga",
+    "Serie A",
+    "Ligue 1",
+    "Ekstraklasa",
+    "Champions League",
+    "Europa League",
+    "Conference League"
+]
 
-# Beispiel-Liga-Auswahl
-liga_urls = {
-    "Premier League (ENG)": "https://www.football-data.co.uk/mmz4281/2223/E0.csv",
-    "Bundesliga (GER)": "https://www.football-data.co.uk/mmz4281/2223/D1.csv",
-    "La Liga (ESP)": "https://www.football-data.co.uk/mmz4281/2223/SP1.csv",
-    "Serie A (ITA)": "https://www.football-data.co.uk/mmz4281/2223/I1.csv",
-    "Ekstraklasa (POL)": "https://www.football-data.co.uk/mmz4281/2223/PL.csv",
-    "Champions League (CL)": "https://www.football-data.co.uk/mmz4281/2223/E1.csv"
-}
+# -------------------------------
+# FUNKTION: Berechne Gewinnwahrscheinlichkeit und Value
+# -------------------------------
+def berechne_value(erwartete_tore_heim, erwartete_tore_ausw, quote_1, quote_x, quote_2):
+    # Einfache Modellierung basierend auf Torverhältnis
+    tor_diff = erwartete_tore_heim - erwartete_tore_ausw
+    
+    # Schätze Wahrscheinlichkeiten grob
+    p_1 = min(max(0.4 + 0.1 * tor_diff, 0.05), 0.9)
+    p_2 = min(max(0.4 - 0.1 * tor_diff, 0.05), 0.9)
+    p_x = 1 - p_1 - p_2
+    
+    # Fair Quoten
+    fair_1 = 1 / p_1
+    fair_x = 1 / p_x
+    fair_2 = 1 / p_2
 
-liga = st.selectbox("Wähle eine Liga aus:", list(liga_urls.keys()))
-csv_url = liga_urls[liga]
+    # Value berechnen
+    value_1 = (p_1 * quote_1) - 1
+    value_x = (p_x * quote_x) - 1
+    value_2 = (p_2 * quote_2) - 1
 
-st.markdown("---")
-st.subheader(f"📊 Daten laden: {liga}")
+    return {
+        "Wahrscheinlichkeiten": {"1": round(p_1, 2), "X": round(p_x, 2), "2": round(p_2, 2)},
+        "Faire Quoten": {"1": round(fair_1, 2), "X": round(fair_x, 2), "2": round(fair_2, 2)},
+        "Value": {"1": round(value_1, 2), "X": round(value_x, 2), "2": round(value_2, 2)}
+    }
 
-@st.cache_data
-def load_data(url):
-    df = pd.read_csv(url)
-    df = df[['HomeTeam', 'AwayTeam', 'FTHG', 'FTAG', 'FTR']].dropna()
-    df['GoalDiff'] = df['FTHG'] - df['FTAG']
-    return df
+# -------------------------------
+# STREAMLIT UI
+# -------------------------------
+st.set_page_config(page_title="Fussball Value Bet App", layout="centered")
+st.title("⚽ Fussball Value Bet Rechner")
 
-df = load_data(csv_url)
-st.dataframe(df.head())
+liga = st.selectbox("Wähle eine Liga oder Wettbewerb:", ligen)
+st.markdown(f"**Ausgewählte Liga:** {liga}")
 
-# Daten vorbereiten
-X = df[['FTHG', 'FTAG', 'GoalDiff']]
-y = df['FTR']
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+st.subheader("🔢 Erwartete Tore")
+erwartete_tore_heim = st.number_input("Erwartete Tore Heim", value=1.5, step=0.1)
+erwartete_tore_ausw = st.number_input("Erwartete Tore Auswärts", value=1.2, step=0.1)
 
-# Modell trainieren
-model = RandomForestClassifier(n_estimators=100, random_state=42)
-model.fit(X_train, y_train)
+st.subheader("💸 Buchmacherquoten")
+quote_1 = st.number_input("Quote Heimsieg (1)", value=2.2)
+quote_x = st.number_input("Quote Unentschieden (X)", value=3.3)
+quote_2 = st.number_input("Quote Auswärtssieg (2)", value=3.0)
 
-# Neue Prognosen eingeben
-st.markdown("---")
-st.subheader("🔮 Neue Spiel-Prognose eingeben")
-col1, col2, col3 = st.columns(3)
+if st.button("🔍 Prognose & Value berechnen"):
+    result = berechne_value(erwartete_tore_heim, erwartete_tore_ausw, quote_1, quote_x, quote_2)
 
-with col1:
-    fthg = st.number_input("⛳ Erwartete Tore Heimteam", value=1)
-with col2:
-    ftag = st.number_input("🎯 Erwartete Tore Auswärtsteam", value=1)
-with col3:
-    quote_home = st.number_input("💰 Quote Heim", value=2.0)
-    quote_draw = st.number_input("💰 Quote Unentschieden", value=3.2)
-    quote_away = st.number_input("💰 Quote Auswärts", value=3.5)
+    st.success("Ergebnisse:")
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.metric("🔮 Wahrscheinlichkeit 1", f"{result['Wahrscheinlichkeiten']['1']*100:.1f}%")
+        st.metric("🎯 Faire Quote 1", result['Faire Quoten']['1'])
+        st.metric("💰 Value 1", result['Value']['1'])
+    
+    with col2:
+        st.metric("🔮 Wahrscheinlichkeit X", f"{result['Wahrscheinlichkeiten']['X']*100:.1f}%")
+        st.metric("🎯 Faire Quote X", result['Faire Quoten']['X'])
+        st.metric("💰 Value X", result['Value']['X'])
 
-if st.button("🔎 Prognose & Value-Berechnung"):
-    goaldiff = fthg - ftag
-    input_data = pd.DataFrame([[fthg, ftag, goaldiff]], columns=['FTHG', 'FTAG', 'GoalDiff'])
-    probs = model.predict_proba(input_data)[0]
-    class_map = model.classes_
+    with col3:
+        st.metric("🔮 Wahrscheinlichkeit 2", f"{result['Wahrscheinlichkeiten']['2']*100:.1f}%")
+        st.metric("🎯 Faire Quote 2", result['Faire Quoten']['2'])
+        st.metric("💰 Value 2", result['Value']['2'])
 
-    # Wahrscheinlichkeiten + Value
-    results = []
-    for i, result in enumerate(class_map):
-        quote = quote_home if result == 'H' else quote_draw if result == 'D' else quote_away
-        value = (probs[i] * quote) - 1
-        results.append({
-            "Ergebnis": result,
-            "Wahrscheinlichkeit (%)": round(probs[i]*100, 2),
-            "Quote": quote,
-            "Value": round(value, 2)
-        })
-
-    result_df = pd.DataFrame(results)
-    st.dataframe(result_df.sort_values(by="Value", ascending=False))
-
-    st.success("✅ Berechnung abgeschlossen. Value Bets oben gelistet.")
+    best = max(result['Value'], key=result['Value'].get)
+    if result['Value'][best] > 0:
+        st.success(f"👉 Potenzielle Value-Bet: **{best}**")
+    else:
+        st.info("Keine Value-Bet gefunden bei diesen Quoten.")
